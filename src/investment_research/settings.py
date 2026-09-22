@@ -31,7 +31,7 @@ class Settings:
     default_ticker: str = os.getenv("DEFAULT_TICKER", "BHEL")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     log_file: str = os.getenv("LOG_FILE", "logs/app.log")
-    cache_enabled: bool = _get_bool("CACHE_ENABLED", True)
+    cache_enabled: bool = _get_bool("CACHE_ENABLED", False)
     cache_file: str = os.getenv("CACHE_FILE", "cache/responses.json")
     cache_ttl_seconds: int = _get_int("CACHE_TTL_SECONDS", 900)
 
