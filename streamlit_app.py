@@ -20,7 +20,7 @@ def get_research_service() -> ResearchService:
 if "research_result" not in st.session_state:
     st.session_state.research_result = None
 
-st.title("Investment research workbench")
+st.title("Market research assistant")
 st.caption("Run a focused price check or generate a source-backed equity research report.")
 
 with st.sidebar:
@@ -35,10 +35,10 @@ with st.form("research_form", border=True):
     ticker = st.text_input(
         "Ticker symbol",
         value=settings.default_ticker,
-        placeholder="AAPL",
+        placeholder="BHEL",
         max_chars=12,
     )
-    st.caption("Examples: AAPL, TSLA, MSFT, NVDA")
+    st.caption("Examples: BHEL, HMA, RPOWER, JKTYRE")
     price_button, details_button = st.columns(2)
     with price_button:
         get_price = st.form_submit_button(

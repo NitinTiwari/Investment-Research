@@ -25,10 +25,10 @@ def _get_bool(name: str, default: bool) -> bool:
 
 @dataclass(frozen=True)
 class Settings:
-    app_name: str = os.getenv("APP_NAME", "Investment Research")
+    app_name: str = os.getenv("APP_NAME", "Market Research")
     model_name: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     stock_price_max_tokens: int = _get_int("STOCK_PRICE_MAX_TOKENS", 200)
-    default_ticker: str = os.getenv("DEFAULT_TICKER", "AAPL")
+    default_ticker: str = os.getenv("DEFAULT_TICKER", "BHEL")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     log_file: str = os.getenv("LOG_FILE", "logs/app.log")
     cache_enabled: bool = _get_bool("CACHE_ENABLED", True)
