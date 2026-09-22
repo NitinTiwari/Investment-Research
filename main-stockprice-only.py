@@ -1,6 +1,8 @@
 from agno.agent import Agent
 from agno.tools.yfinance import YFinanceTools
 from agno.models.groq import Groq 
+from investment_research.cache import ResponseCache, response_text
+from investment_research.data.market_data import normalize_ticker
 from investment_research.observability import (
     configure_logging,
     extract_response_metrics,
@@ -10,6 +12,7 @@ from investment_research.settings import settings
 from time import perf_counter
 
 logger = configure_logging(settings.log_level, settings.log_file)
+cache = ResponseCache(settings.cache_file, settings.cache_ttl_seconds)
 
 llm = Groq(id=settings.model_name, max_tokens=settings.stock_price_max_tokens)
 
@@ -26,7 +29,16 @@ finance_agent = Agent(
 )
 
 # 2. CAPTURE INPUT AND RUN THE TARGETED AGENT
-input_data = input("Enter ticker symbol (e.g., AAPL, TSLA): ").strip().upper()
+try:
+    input_data = normalize_ticker(input("Enter ticker symbol (e.g., AAPL, TSLA): "))
+except (EOFError, KeyboardInterrupt):
+    log_event(logger, "session_ended", application="stock_price", reason="input_closed")
+    print("\nGoodbye.")
+    raise SystemExit(0)
+except ValueError as error:
+    log_event(logger, "invalid_ticker", application="stock_price", error=str(error))
+    print(f"Invalid ticker: {error}")
+    raise SystemExit(2)
 
 print(f"\nFetching price for {input_data}...")
 query = f"What is the current stock price of {input_data}?"
@@ -41,8 +53,23 @@ log_event(
     configured_tools=["YFinanceTools"],
 )
 
+cached_response = cache.get("stock_price", query, settings.model_name) if settings.cache_enabled else None
+if cached_response is not None:
+    print(cached_response)
+    log_event(
+        logger,
+        "research_cache_hit",
+        application="stock_price",
+        ticker=input_data,
+        duration_ms=round((perf_counter() - started_at) * 1000, 2),
+    )
+    raise SystemExit(0)
+
 try:
     response = finance_agent.print_response(query, stream=True)
+    generated_text = response_text(response)
+    if generated_text is not None and settings.cache_enabled:
+        cache.set("stock_price", query, settings.model_name, generated_text)
     log_event(
         logger,
         "research_completed",

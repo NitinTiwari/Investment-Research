@@ -54,8 +54,11 @@ def log_event(logger: logging.Logger, event: str, **fields: Any) -> None:
 
 
 def extract_response_metrics(response: Any) -> dict[str, Any]:
-    #metrics = getattr(response, "metrics", None)
-    metrics = response
+    metrics = getattr(response, "metrics", None)
+    if metrics is None:
+        metrics = getattr(response, "usage", None)
+    if metrics is None:
+        return {}
     if hasattr(metrics, "model_dump"):
         return metrics.model_dump()
     if isinstance(metrics, dict):

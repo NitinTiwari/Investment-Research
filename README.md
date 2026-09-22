@@ -37,6 +37,9 @@ Application-level values are centralized in `src/investment_research/settings.py
 | `STOCK_PRICE_MAX_TOKENS` | `200` | Response limit for the stock-price app |
 | `DEFAULT_TICKER` | `AAPL` | Default ticker for future integrations |
 | `APP_NAME` | `Investment Research` | Application name |
+| `CACHE_ENABLED` | `true` | Enable completed-response caching |
+| `CACHE_FILE` | `cache/responses.json` | Local cache file |
+| `CACHE_TTL_SECONDS` | `900` | Cache lifetime in seconds; `0` disables caching |
 
 Never commit `.env` or API keys. Use `.env.example` as the safe template.
 
@@ -54,6 +57,12 @@ The logs record:
 
 Set `LOG_LEVEL` to `DEBUG`, `INFO`, `WARNING`, or `ERROR` to control verbosity.
 Set `LOG_FILE` to change the log destination. Runtime logs are ignored by Git.
+
+## Caching and Error Handling
+
+Completed responses are cached locally for 15 minutes by default. A repeated request with the same application, model, ticker, and query is served from the cache without calling the AI or financial tools. Cache files are ignored by Git and can be disabled with `CACHE_ENABLED=false` or `CACHE_TTL_SECONDS=0`.
+
+The CLI validates and normalizes ticker symbols, handles empty input and closed terminals, and reports API or agent failures without exposing a traceback to the user. Missing, expired, malformed, or unwritable cache files are treated as cache misses so they do not prevent a live request.
 
 ## Tests
 

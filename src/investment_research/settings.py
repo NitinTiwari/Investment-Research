@@ -10,6 +10,13 @@ def _get_int(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
         return default
+
+
+def _get_bool(name: str, default: bool) -> bool:
+    value = os.getenv(name)
+    if value is None:
+        return default
+    return value.strip().lower() in {"1", "true", "yes", "on"}
     try:
         return int(value)
     except ValueError:
@@ -24,6 +31,9 @@ class Settings:
     default_ticker: str = os.getenv("DEFAULT_TICKER", "AAPL")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     log_file: str = os.getenv("LOG_FILE", "logs/app.log")
+    cache_enabled: bool = _get_bool("CACHE_ENABLED", True)
+    cache_file: str = os.getenv("CACHE_FILE", "cache/responses.json")
+    cache_ttl_seconds: int = _get_int("CACHE_TTL_SECONDS", 900)
 
 
 settings = Settings()
