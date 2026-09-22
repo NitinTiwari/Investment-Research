@@ -10,6 +10,10 @@ def _get_int(name: str, default: int) -> int:
     value = os.getenv(name)
     if value is None:
         return default
+    try:
+        return int(value)
+    except ValueError:
+        return default
 
 
 def _get_bool(name: str, default: bool) -> bool:
@@ -17,10 +21,6 @@ def _get_bool(name: str, default: bool) -> bool:
     if value is None:
         return default
     return value.strip().lower() in {"1", "true", "yes", "on"}
-    try:
-        return int(value)
-    except ValueError:
-        return default
 
 
 @dataclass(frozen=True)

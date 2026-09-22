@@ -1,7 +1,7 @@
 [project]
 name = "investment-research"
 version = "0.1.0"
-description = "Add your description here"
+description = "Stock market analysis"
 readme = "README.md"
 authors = [
     { name = "nitin.iats@gmail.com", email = "nitin.iats@gmail.com" }
@@ -17,6 +17,7 @@ dependencies = [
     "langchain-groq",
     "pydantic>=2.13.5",
     "pytest>=8.0.0",
+    "streamlit>=1.57.0",
     "yfinance>=1.7.0",
 ]
 

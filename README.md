@@ -24,6 +24,19 @@ uv run python main-stockprice-only.py
 uv run python main.-with-details.py
 ```
 
+Run the portfolio web interface:
+
+```powershell
+uv run streamlit run streamlit_app.py
+```
+
+The dashboard provides two actions for the selected ticker:
+
+- **Get stock price** runs the focused `YFinanceTools` workflow.
+- **Generate detailed research** runs the combined web and finance research workflow.
+
+Both actions use the shared cache, error handling, and observability layer. Results can be downloaded as Markdown files.
+
 Enter a ticker symbol when prompted, for example `AAPL` or `TSLA`.
 
 ## Configuration
