@@ -1,3 +1,4 @@
+import requests
 from dataclasses import dataclass
 from time import perf_counter
 from typing import Any
@@ -15,6 +16,20 @@ from investment_research.observability import (
     log_event,
 )
 from investment_research.settings import Settings, settings
+
+
+def _create_yfinance_session() -> requests.Session:
+    session = requests.Session()
+    session.headers.update({
+        "User-Agent": (
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) "
+            "Chrome/124.0.0.0 Safari/537.36"
+        ),
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en-US,en;q=0.9",
+    })
+    return session
 
 
 @dataclass(frozen=True)
@@ -43,9 +58,14 @@ class ResearchService:
             )
             self._stock_price_agent = Agent(
                 model=model,
-                tools=[YFinanceTools(enable_stock_price=True)],
+                tools=[
+                    YFinanceTools(enable_stock_price=True, session=_create_yfinance_session()),
+                    DuckDuckGoTools(),
+                ],
                 instructions=[
                     "You are a precise financial ticker. Look up the current stock price using your tools.",
+                    "First try YFinanceTools. If looking up an Indian stock (like BHEL, RPOWER, JKTYRE, HMA) and no exchange suffix is given, query with '.NS' (NSE) or '.BO' (BSE).",
+                    "If YFinanceTools is blocked, fails, or returns an error, use DuckDuckGoTools to find the latest stock price.",
                     "Output ONLY the final current stock price, currency, and the last updated date.",
                     "Do not include introductory text, extra analysis, tables, or conversational filler.",
                 ],
@@ -64,12 +84,12 @@ class ResearchService:
             )
             finance_agent = Agent(
                 model=model,
-                tools=[YFinanceTools(enable_stock_price=True)],
+                tools=[YFinanceTools(enable_stock_price=True, session=_create_yfinance_session())],
                 instructions=[
-                        "You are a precise financial ticker. Look up the current stock price using your tools.",
-                        "Output ONLY the final current stock price, currency, and the last updated date.",
-                        "Do not include any introductory text, extra analysis, tables, or conversational filler."
-                    ],
+                    "You are a precise financial ticker. Look up the current stock price using your tools.",
+                    "Output ONLY the final current stock price, currency, and the last updated date.",
+                    "Do not include any introductory text, extra analysis, tables, or conversational filler.",
+                ],
                 markdown=True,
             )
             self._detailed_agent = Agent(
@@ -91,7 +111,7 @@ class ResearchService:
 
         if mode == "stock_price":
             query = f"What is the current stock price of {normalized_ticker}?"
-            tools = ["YFinanceTools"]
+            tools = ["YFinanceTools", "DuckDuckGoTools"]
         else:
             query = f"Research {normalized_ticker} and provide a detailed equity research report."
             tools = ["DuckDuckGoTools", "YFinanceTools"]

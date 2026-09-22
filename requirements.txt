@@ -9,3 +9,5 @@ pydantic>=2.13.5
 pytest>=8.0.0
 streamlit>=1.57.0
 yfinance>=1.7.0
+pandas>=2.0
+requests>=2.31.0

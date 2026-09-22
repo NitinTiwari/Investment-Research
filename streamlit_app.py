@@ -1,4 +1,13 @@
+import os
 import streamlit as st
+
+# Sync Streamlit Cloud secrets to os.environ so Groq and tools can access them
+try:
+    for _key, _value in st.secrets.items():
+        if isinstance(_value, str) and _key not in os.environ:
+            os.environ[_key] = _value
+except Exception:
+    pass
 
 from investment_research.research_service import ResearchResult, ResearchService
 from investment_research.settings import settings
