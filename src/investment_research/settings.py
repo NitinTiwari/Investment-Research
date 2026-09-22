@@ -22,6 +22,8 @@ class Settings:
     model_name: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     stock_price_max_tokens: int = _get_int("STOCK_PRICE_MAX_TOKENS", 200)
     default_ticker: str = os.getenv("DEFAULT_TICKER", "AAPL")
+    log_level: str = os.getenv("LOG_LEVEL", "INFO")
+    log_file: str = os.getenv("LOG_FILE", "logs/app.log")
 
 
 settings = Settings()

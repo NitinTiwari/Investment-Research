@@ -1,0 +1,194 @@
+Investment Research Portfolio Roadmap
+=====================================
+
+Recommended portfolio direction
+--------------------------------
+
+Turn the current prototype into an AI Equity Research Workbench with:
+
+- Ticker search
+- Current price and market data
+- Company overview
+- Financial statement analysis
+- News and sentiment
+- Analyst recommendations
+- Technical indicators
+- Peer comparison
+- Bull/base/bear investment thesis
+- Downloadable research reports
+
+Highest-value changes
+---------------------
+
+1. Add a web interface
+
+Use Streamlit for a polished dashboard instead of terminal-only input.
+
+Suggested layout:
+
+- Sidebar: ticker, date range, and comparison tickers
+- Main section: price chart and key metrics
+- Tabs:
+  - Overview
+  - Financials
+  - News
+  - Technical Analysis
+  - AI Research Report
+  - Risk Analysis
+
+A web interface makes the project immediately demonstrable in a portfolio.
+
+2. Separate the application into modules
+
+The current scripts contain configuration, agent creation, user input, and execution together.
+
+Suggested structure:
+
+src/investment_research/
+    settings.py
+    data/
+        market_data.py
+        financials.py
+        news.py
+    agents/
+        research_team.py
+        prompts.py
+    analysis/
+        technicals.py
+        valuation.py
+        risk.py
+    reports/
+        generator.py
+    app.py
+
+3. Add useful financial tools
+
+Useful features include:
+
+- Historical price charts
+- Moving averages: 20-day, 50-day, and 200-day
+- RSI and MACD
+- Volatility
+- Maximum drawdown
+- Revenue and earnings growth
+- Profit margins
+- Debt-to-equity ratio
+- Free cash flow
+- P/E, PEG, and price-to-sales ratios
+- Dividend yield
+- Competitor comparison
+- Portfolio/watchlist tracking
+
+4. Improve the AI research workflow
+
+Use a structured research process instead of asking the agent only for a current stock price:
+
+1. Retrieve market data.
+2. Retrieve company financials.
+3. Retrieve recent news.
+4. Analyze risks.
+5. Compare competitors.
+6. Produce a bull/base/bear thesis.
+7. Include citations and a confidence score.
+
+The final response should contain:
+
+- Executive summary
+- Key metrics
+- Growth drivers
+- Risks
+- Valuation discussion
+- Bull case
+- Base case
+- Bear case
+- Sources
+- Not financial advice disclaimer
+
+5. Add report export
+
+Allow users to download:
+
+- Markdown reports
+- PDF reports
+- CSV financial data
+- JSON analysis results
+
+This demonstrates an end-to-end workflow and makes the application more useful.
+
+6. Add caching and error handling
+
+Financial APIs can be slow or fail. Add:
+
+- Cached API responses
+- Invalid ticker handling
+- Missing data handling
+- API timeout handling
+- Friendly error messages
+- Rate-limit protection
+
+7. Add tests
+
+At minimum, add:
+
+tests/
+    test_settings.py
+    test_market_data.py
+    test_technicals.py
+    test_report_format.py
+
+Test calculations such as RSI, moving averages, returns, and drawdown independently from the AI.
+
+8. Add observability
+
+Log useful application information such as:
+
+- User query
+- Selected ticker
+- Tools called
+- Response duration
+- Errors
+- Token usage, if available
+
+Also create an evaluation set with several known companies to check whether generated reports contain the required sections and sources.
+
+Important current-project cleanup
+---------------------------------
+
+- Make the README model default match the default in settings.py. The README currently documents llama-3.3-70b-versatile while settings.py currently defaults to qwen/qwen3.8-27b.
+- Rename main.-with-details.py to a cleaner name such as main_with_details.py.
+- Remove temporary comments such as development numbering and notes.
+- Move agent construction out of the top-level scripts.
+- Validate ticker input and normalize it with strip() and upper().
+- Use settings.default_ticker instead of repeating ticker defaults.
+- Add a real package entry point for the application instead of relying mainly on standalone scripts.
+- Update the project description in pyproject.toml.
+
+Suggested implementation order
+------------------------------
+
+1. Refactor the application into modules.
+2. Add a Streamlit dashboard.
+3. Add historical charts and technical indicators.
+4. Add financial metrics and peer comparison.
+5. Add structured AI reports with citations.
+6. Add PDF and Markdown export.
+7. Add tests, caching, and error handling.
+8. Deploy it publicly with a clear README, screenshots, and architecture diagram.
+
+Final portfolio goal
+--------------------
+
+The strongest portfolio version is a focused AI-powered equity research dashboard, not just a chatbot that returns stock prices.
+
+The application should demonstrate:
+
+- AI agent orchestration
+- Financial data retrieval
+- Quantitative analysis
+- Data visualization
+- Structured report generation
+- Source citation
+- Error handling
+- Automated tests
+- A usable web interface
+- Deployment and documentation

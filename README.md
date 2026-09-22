@@ -39,3 +39,28 @@ Application-level values are centralized in `src/investment_research/settings.py
 | `APP_NAME` | `Investment Research` | Application name |
 
 Never commit `.env` or API keys. Use `.env.example` as the safe template.
+
+## Observability
+
+Each research request emits JSON-lines logs to the console and to `logs/app.log`.
+The logs record:
+
+- Selected ticker and query
+- Application and model name
+- Configured research tools
+- Request duration
+- Completion metrics when the model provides them
+- Exception type and traceback when a request fails
+
+Set `LOG_LEVEL` to `DEBUG`, `INFO`, `WARNING`, or `ERROR` to control verbosity.
+Set `LOG_FILE` to change the log destination. Runtime logs are ignored by Git.
+
+## Tests
+
+Run the deterministic test suite with:
+
+```powershell
+uv run pytest
+```
+
+The tests cover settings, ticker validation, technical calculations, report formatting, and failure cases without calling external financial or AI APIs.
