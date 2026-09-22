@@ -1,0 +1,9 @@
+agno>=3.0.10
+boto3>=1.43.99
+ddgs>=9.16.0
+dotenv>=0.9.9
+groq<1.0.0
+langchain>=1.4.2
+langchain-groq
+pydantic>=2.13.5
+yfinance>=1.7.0

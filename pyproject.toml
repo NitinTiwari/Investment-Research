@@ -1,0 +1,27 @@
+[project]
+name = "investment-research"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+authors = [
+    { name = "nitin.iats@gmail.com", email = "nitin.iats@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = [
+    "agno>=3.0.10",
+    "boto3>=1.43.99",
+    "ddgs>=9.16.0",
+    "dotenv>=0.9.9",
+    "groq<1.0.0",
+    "langchain>=1.4.2",
+    "langchain-groq",
+    "pydantic>=2.13.5",
+    "yfinance>=1.7.0",
+]
+
+[project.scripts]
+investment-research = "investment_research:main"
+
+[build-system]
+requires = ["uv_build>=0.12.4,<0.13.0"]
+build-backend = "uv_build"
