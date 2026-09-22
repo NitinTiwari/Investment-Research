@@ -64,15 +64,12 @@ class ResearchService:
             )
             finance_agent = Agent(
                 model=model,
-                tools=[
-                    YFinanceTools(
-                        enable_stock_price=True,
-                        enable_company_news=True,
-                        enable_analyst_recommendations=True,
-                        enable_income_statements=True,
-                    )
-                ],
-                instructions="use table to display data",
+                tools=[YFinanceTools(enable_stock_price=True)],
+                instructions=[
+                        "You are a precise financial ticker. Look up the current stock price using your tools.",
+                        "Output ONLY the final current stock price, currency, and the last updated date.",
+                        "Do not include any introductory text, extra analysis, tables, or conversational filler."
+                    ],
                 markdown=True,
             )
             self._detailed_agent = Agent(
