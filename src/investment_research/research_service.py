@@ -16,6 +16,8 @@ from investment_research.observability import (
     log_event,
 )
 from investment_research.settings import Settings, settings
+from investment_research.translator import translate_text, translate_to_hindi
+
 
 
 def _create_yfinance_session() -> requests.Session:
@@ -103,6 +105,12 @@ class ResearchService:
                 ],
             )
         return self._detailed_agent
+
+    def translate_report(self, text: str, target_lang: str = "hi") -> str:
+        """Translate report text into the target language (default Hindi) without an LLM call."""
+        if target_lang.lower() in {"hi", "hindi"}:
+            return translate_to_hindi(text)
+        return translate_text(text, target_lang=target_lang)
 
     def run(self, ticker: str, mode: str) -> ResearchResult:
         normalized_ticker = normalize_ticker(ticker)

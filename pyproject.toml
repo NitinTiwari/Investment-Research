@@ -11,6 +11,7 @@ dependencies = [
     "agno>=3.0.10",
     "boto3>=1.43.99",
     "ddgs>=9.16.0",
+    "deep-translator>=1.11.4",
     "dotenv>=0.9.9",
     "groq<1.0.0",
     "langchain>=1.4.2",

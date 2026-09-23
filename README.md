@@ -37,6 +37,14 @@ The dashboard provides two actions for the selected ticker:
 
 Both actions use the shared cache, error handling, and observability layer. Results can be downloaded as Markdown files.
 
+### Language Selection (English / Hindi)
+
+The Streamlit UI includes a language dropdown (**English** / **Hindi**):
+- When **Hindi** is selected, the detailed research report is translated into Hindi using `GoogleTranslator` from `deep-translator`.
+- The translation is performed client-side without making a separate LLM call to Groq.
+- Switching between English and Hindi is instantaneous, as translations are cached in the session state.
+- Downloaded reports reflect the currently selected language.
+
 Enter a ticker symbol when prompted, for example `AAPL` or `TSLA`.
 
 ## Configuration

@@ -12,7 +12,6 @@ except Exception:
 from investment_research.research_service import ResearchResult, ResearchService
 from investment_research.settings import settings
 
-
 st.set_page_config(
     page_title=settings.app_name,
     page_icon=":material/monitoring:",
@@ -20,14 +19,15 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-
 @st.cache_resource
 def get_research_service() -> ResearchService:
     return ResearchService()
 
-
 if "research_result" not in st.session_state:
     st.session_state.research_result = None
+
+if "translated_results" not in st.session_state:
+    st.session_state.translated_results = {}
 
 st.title("Market research assistant")
 st.caption("Run a focused price check or generate a source-backed equity research report.")
@@ -38,7 +38,7 @@ with st.sidebar:
     st.caption(f"Cache: {'enabled' if settings.cache_enabled else 'disabled'}")
     st.divider()
     st.markdown("**Workflow**")
-    st.markdown("1. Enter a ticker\n2. Choose a research action\n3. Review the result and sources")
+    st.markdown("1. Enter a ticker\n2. Choose a research action\n3. Review the result and sources\n4. Switch language (English/Hindi) without extra LLM calls")
 
 with st.form("research_form", border=True):
     ticker = st.text_input(
@@ -82,6 +82,17 @@ if selected_mode:
     except Exception:
         st.error("The research service is temporarily unavailable. Check your API key and try again.")
 
+# Language selection dropdown (English / Hindi)
+col_spacer, col_lang = st.columns([3, 1])
+with col_lang:
+    selected_language = st.selectbox(
+        "Language / भाषा",
+        options=["English", "Hindi"],
+        index=0,
+        help="Select language. Hindi translation is performed via GoogleTranslator without making an extra LLM call.",
+        key="selected_language",
+    )
+
 result: ResearchResult | None = st.session_state.research_result
 if result is None:
     with st.container(border=True):
@@ -95,15 +106,28 @@ else:
             st.caption("Served from local cache")
         else:
             st.caption(f"Completed in {result.duration_ms / 1000:.1f} seconds")
-        st.markdown(result.text)
+
+        display_text = result.text
+        if selected_language == "Hindi":
+            cache_key = (result.ticker, result.mode, "Hindi")
+            if cache_key in st.session_state.translated_results:
+                display_text = st.session_state.translated_results[cache_key]
+            else:
+                service = get_research_service()
+                with st.spinner("Translating detailed report to Hindi via GoogleTranslator..."):
+                    display_text = service.translate_report(result.text, target_lang="hi")
+                    st.session_state.translated_results[cache_key] = display_text
+
+        st.markdown(display_text)
 
         st.download_button(
             "Download result",
-            data=result.text,
-            file_name=f"{result.ticker.lower()}-{result.mode}.md",
+            data=display_text,
+            file_name=f"{result.ticker.lower()}-{result.mode}-{selected_language.lower()}.md",
             mime="text/markdown",
             icon=":material/download:",
         )
+
 
 st.divider()
 st.caption("AI-generated research is informational only and is not financial advice.")
