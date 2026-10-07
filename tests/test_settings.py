@@ -5,6 +5,7 @@ def test_settings_have_operational_defaults() -> None:
     assert settings.app_name
     assert settings.model_name
     assert settings.stock_price_max_tokens > 0
+    assert settings.agent_tool_call_limit > 0
     assert settings.default_ticker
     assert settings.log_level
     assert settings.log_file

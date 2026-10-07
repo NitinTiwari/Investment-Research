@@ -16,6 +16,11 @@ def _get_int(name: str, default: int) -> int:
         return default
 
 
+def _get_positive_int(name: str, default: int) -> int:
+    value = _get_int(name, default)
+    return value if value > 0 else default
+
+
 def _get_bool(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -28,6 +33,7 @@ class Settings:
     app_name: str = os.getenv("APP_NAME", "Market Research")
     model_name: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     stock_price_max_tokens: int = _get_int("STOCK_PRICE_MAX_TOKENS", 200)
+    agent_tool_call_limit: int = _get_positive_int("AGENT_TOOL_CALL_LIMIT", 5)
     default_ticker: str = os.getenv("DEFAULT_TICKER", "BHEL")
     log_level: str = os.getenv("LOG_LEVEL", "INFO")
     log_file: str = os.getenv("LOG_FILE", "logs/app.log")

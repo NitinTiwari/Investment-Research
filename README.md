@@ -56,6 +56,7 @@ Application-level values are centralized in `src/investment_research/settings.py
 | `GROQ_API_KEY` | None | Groq authentication key |
 | `GROQ_MODEL` | `llama-3.3-70b-versatile` | Groq model ID |
 | `STOCK_PRICE_MAX_TOKENS` | `200` | Response limit for the stock-price app |
+| `AGENT_TOOL_CALL_LIMIT` | `5` | Maximum tool calls per agent run to stop runaway tool-call loops |
 | `DEFAULT_TICKER` | `AAPL` | Default ticker for future integrations |
 | `APP_NAME` | `Investment Research` | Application name |
 | `CACHE_ENABLED` | `true` | Enable completed-response caching |
@@ -82,6 +83,8 @@ Set `LOG_FILE` to change the log destination. Runtime logs are ignored by Git.
 ## Caching and Error Handling
 
 Completed responses are cached locally for 15 minutes by default. A repeated request with the same application, model, ticker, and query is served from the cache without calling the AI or financial tools. Cache files are ignored by Git and can be disabled with `CACHE_ENABLED=false` or `CACHE_TTL_SECONDS=0`.
+
+Each Agno agent also has a bounded tool-call budget per run (`AGENT_TOOL_CALL_LIMIT`, default `5`). This prevents an agent from repeatedly invoking research tools indefinitely; in the detailed workflow, each specialist and the coordinator have this limit.
 
 The CLI validates and normalizes ticker symbols, handles empty input and closed terminals, and reports API or agent failures without exposing a traceback to the user. Missing, expired, malformed, or unwritable cache files are treated as cache misses so they do not prevent a live request.
 

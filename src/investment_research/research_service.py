@@ -60,6 +60,7 @@ class ResearchService:
             )
             self._stock_price_agent = Agent(
                 model=model,
+                tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[
                     YFinanceTools(enable_stock_price=True, session=_create_yfinance_session()),
                     DuckDuckGoTools(),
@@ -80,12 +81,14 @@ class ResearchService:
             model = Groq(id=self.settings.model_name)
             web_agent = Agent(
                 model=model,
+                tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[DuckDuckGoTools()],
                 instructions="always include sources",
                 markdown=True,
             )
             finance_agent = Agent(
                 model=model,
+                tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[YFinanceTools(enable_stock_price=True, session=_create_yfinance_session())],
                 instructions=[
                     "You are a precise financial ticker. Look up the current stock price using your tools.",
@@ -96,6 +99,7 @@ class ResearchService:
             )
             self._detailed_agent = Agent(
                 model=model,
+                tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[web_agent, finance_agent],
                 markdown=True,
                 instructions=[
