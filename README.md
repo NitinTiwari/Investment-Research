@@ -1,8 +1,8 @@
 # Investment Research
 
-An AI-powered equity research and financial market analysis platform built with **Agno**, **Groq**, **Yahoo Finance**, **DuckDuckGo**, and **Streamlit**.
+An AI-powered equity research and financial market analysis platform built with **Agno**, **LiteLLM Gateway**, **Groq**, **Yahoo Finance**, **DuckDuckGo**, and **Streamlit**.
 
-The platform provides real-time stock quotes, comprehensive source-backed equity research reports, zero-LLM-cost multilingual translation (English / Hindi), atomic response caching, structured JSON observability, and quantitative technical analysis calculations.
+The platform provides real-time stock quotes, comprehensive source-backed equity research reports, zero-LLM-cost multilingual translation (English / Hindi), centralized gateway-level response caching, gateway tool call budgeting, structured JSON observability, and quantitative technical analysis calculations.
 
 ---
 
@@ -21,19 +21,13 @@ The platform provides real-time stock quotes, comprehensive source-backed equity
   - [Directory Structure](#directory-structure)
   - [Technology Stack](#technology-stack)
 - [Technical Details & Deep Dive](#technical-details--deep-dive)
-  - [Tool Calling Architecture & Guardrails](#tool-calling-architecture--guardrails)
-    - [Registered Tools & Function Signatures](#registered-tools--function-signatures)
-    - [Multi-Agent Delegation Flow](#multi-agent-delegation-flow)
-    - [Groq Server-Side Validation & Naming Normalization](#groq-server-side-validation--naming-normalization)
-    - [Tool Call Budget & Runaway Protection](#tool-call-budget--runaway-protection)
+  - [LiteLLM Gateway Architecture & Governance](#litellm-gateway-architecture--governance)
+    - [Centralized Model Routing & Multi-Provider Abstraction](#centralized-model-routing--multi-provider-abstraction)
+    - [Gateway Tool Call Budgeting & Runaway Protection](#gateway-tool-call-budgeting--runaway-protection)
+    - [Gateway Multi-Tier Caching (LiteLLM In-Memory & Atomic Disk)](#gateway-multi-tier-caching-litellm-in-memory--atomic-disk)
+    - [Tool Calling Architecture & Safe Aliasing](#tool-calling-architecture--safe-aliasing)
     - [Anti-Blocking Session & Regional Ticker Support](#anti-blocking-session--regional-ticker-support)
-    - [Automated Retry Mechanism](#automated-retry-mechanism)
-  - [Cache Implementation & Storage Engine](#cache-implementation--storage-engine)
-    - [Deterministic SHA-256 Keying Strategy](#deterministic-sha-256-keying-strategy)
-    - [Atomic File Write Mechanism](#atomic-file-write-mechanism)
-    - [TTL Expiration & Eviction Policy](#ttl-expiration--eviction-policy)
-    - [Fail-Open Resilience & Error Recovery](#fail-open-resilience--error-recovery)
-    - [Multi-Tiered Caching (Disk vs Session State)](#multi-tiered-caching-disk-vs-session-state)
+    - [Automated Gateway Retries & Resilience](#automated-gateway-retries--resilience)
   - [Translation Pipeline & Cost Optimization](#translation-pipeline--cost-optimization)
   - [Structured Observability & JSON-Lines Logging](#structured-observability--json-lines-logging)
 - [Configuration Reference](#configuration-reference)
@@ -110,38 +104,38 @@ Investment Research bridges large language models and real-time financial market
 flowchart TD
     User([User / Analyst]) --> UI{Interface}
     UI -->|Web Browser| ST[Streamlit App\nstreamlit_app.py]
-    UI -->|Terminal| CLI1[Stock Price CLI\nmain-stockprice-only.py]
-    UI -->|Terminal| CLI2[Detailed Research CLI\nmain-with-details.py]
+    UI -->|CLI Single Query| CLI1[Stock Price CLI\nmain-stockprice-only.py]
+    UI -->|CLI Interactive| CLI2[Detailed Research CLI\nmain-with-details.py]
 
     ST --> Service[ResearchService\nresearch_service.py]
-    CLI1 --> CashCheck1{Cache Hit?}
-    CLI2 --> CashCheck2{Cache Hit?}
-    Service --> CashCheck3{Cache Hit?}
 
-    CashCheck1 -->|Yes| Out1[Display Cached Result]
-    CashCheck2 -->|Yes| Out2[Display Cached Result]
-    CashCheck3 -->|Yes| Out3[Return Cached Result]
+    subgraph GW["LiteLLM Gateway Layer (src/investment_research/gateway.py)"]
+        GWRouter[LLMGateway Controller]
+        GWCacheCheck{Gateway Cache\nHit or Miss?}
+        GWPolicy[Policy Engine\nTool Call Budget (Max 5)\nRetries & Aliasing]
+        LiteSDK[LiteLLM SDK & Router]
+        DiskCache[(Atomic Disk Cache\ncache/responses.json)]
+        MemCache[(LiteLLM Local Cache)]
 
-    CashCheck1 -->|No| SPA[Stock Price Agent\nGroq + YFinance / DDG]
-    CashCheck2 -->|No| Team1[Agent Team Coordinator]
-    CashCheck3 -->|No| RouteMode{Selected Mode}
+        GWRouter --> GWCacheCheck
+        GWCacheCheck -->|Cache Hit| ReturnCached[Return Cached Result]
+        GWCacheCheck -->|Cache Miss| GWPolicy
+        GWPolicy --> LiteSDK
+        GWCacheCheck -.-> DiskCache
+        GWCacheCheck -.-> MemCache
+    end
 
-    RouteMode -->|stock_price| SPA2[Stock Price Agent]
-    RouteMode -->|detailed_research| Team2[Detailed Agent Team]
+    Service --> GWRouter
+    CLI1 --> GWRouter
+    CLI2 --> GWRouter
 
-    Team1 --> WA[Web Agent\nDuckDuckGoTools]
-    Team1 --> FA[Finance Agent\nYFinanceTools]
+    LiteSDK -->|Unified Route| UpstreamLLM[Upstream LLM Providers\nGroq / OpenAI / Anthropic / Ollama]
+    GWPolicy --> Agents[Agno Multi-Agent Team]
 
-    Team2 --> WA2[Web Agent\nDuckDuckGoTools]
-    Team2 --> FA2[Finance Agent\nYFinanceTools]
+    Agents -->|Price Quotes| ToolsYF[YFinanceTools]
+    Agents -->|Live News / Web| ToolsDDG[DuckDuckGoTools]
 
-    SPA --> LLM[Groq LLM API]
-    SPA2 --> LLM
-    Team1 --> LLM
-    Team2 --> LLM
-
-    LLM --> Cache[(Atomic JSON Cache\ncache/responses.json)]
-    LLM --> Logger[(Observability Engine\nlogs/app.log)]
+    Agents --> ObsLogger[(JSON-Lines Logger\nlogs/app.log)]
 
     ST --> LangCheck{Selected Language}
     LangCheck -->|English| Render[Render Markdown Report]
@@ -169,6 +163,7 @@ Investment-Research/
 │   └── investment_research/           # Core library package
 │       ├── __init__.py                # Package initialization & CLI entry point
 │       ├── settings.py                # Centralized immutable configuration (Settings)
+│       ├── gateway.py                 # LiteLLM Gateway (routing, tool limits, multi-tier cache)
 │       ├── research_service.py        # High-level orchestration service (ResearchService)
 │       ├── cache.py                   # Atomic JSON caching engine (ResponseCache)
 │       ├── observability.py           # Structured JSON-lines logger & metric extractor
@@ -180,6 +175,7 @@ Investment-Research/
 │       └── reports/
 │           └── report_format.py       # Markdown report structuring and required sections
 └── tests/                             # Deterministic unit and integration test suite
+    ├── test_gateway.py                # LiteLLM Gateway model formatting, tool limits, and caching
     ├── test_cache.py                  # Cache hits, misses, TTL, and corruption recovery
     ├── test_market_data.py            # Ticker normalization and validation tests
     ├── test_report_format.py          # Report schema validation tests
@@ -196,8 +192,9 @@ Investment-Research/
 | --- | --- | --- | --- |
 | **Language** | Python | `>=3.13` | Modern Python runtime |
 | **Package Management** | `uv` / `pip` | Latest | High-speed dependency resolver and virtual environment manager |
+| **LLM Gateway** | `litellm` | `>=1.109.1` | Centralized LLM gateway, model routing, native caching, and tool policies |
 | **Agent Framework** | `agno` | `>=3.0.10` | Autonomous multi-agent coordination, tools, and instructions |
-| **LLM Provider** | `groq` / `langchain-groq` | `<1.0.0` | Ultra-low latency inference for Llama / Qwen models |
+| **LLM Provider** | `groq` / `langchain-groq` | `<1.0.0` | Ultra-low latency inference for Llama / Qwen models routed via LiteLLM |
 | **Web UI** | `streamlit` | `>=1.57.0` | Interactive web dashboard and component rendering |
 | **Financial Data** | `yfinance` | `>=1.7.0` | Market quotes, financials, analyst ratings, and news |
 | **Live Web Search** | `ddgs` (DuckDuckGo) | `>=9.16.0` | Real-time web intelligence and source citations |
@@ -209,175 +206,131 @@ Investment-Research/
 
 ## Technical Details & Deep Dive
 
-### Tool Calling Architecture & Guardrails
+### LiteLLM Gateway Architecture & Governance
 
-The application leverages Agno's agent framework integrated with Groq's low-latency inference engine, transforming Python tools into OpenAI-compatible tool schemas (`request.tools`) passed to the model endpoint.
+The platform implements an **LLM Gateway** pattern powered by **LiteLLM** (`src/investment_research/gateway.py`). Rather than coupling application logic directly to proprietary provider APIs (e.g. raw Groq SDK), all model routing, tool call constraints, and caching are governed by the gateway middleware.
+
+```mermaid
+flowchart LR
+    subgraph App["Application Layer"]
+        Streamlit[Streamlit Dashboard]
+        CLI_Stock[Stock Price CLI]
+        CLI_Details[Detailed Research CLI]
+    end
+
+    subgraph GW["LiteLLM Gateway Control Plane (gateway.py)"]
+        Router[Model Router & Formatter]
+        CacheManager[Gateway Cache Manager]
+        PolicyEngine[Tool Policy & Budgeting Engine]
+        LiteSDK[LiteLLM SDK Core]
+    end
+
+    subgraph Providers["Upstream LLM Providers"]
+        Groq[Groq Cloud API\nLlama 3.3 / Qwen]
+        OpenAI[OpenAI / Azure]
+        Anthropic[Anthropic Claude]
+        Local[Local / Ollama]
+    end
+
+    App -->|Requests| Router
+    Router --> CacheManager
+    CacheManager --> PolicyEngine
+    PolicyEngine --> LiteSDK
+    LiteSDK --> Providers
+```
+
+#### Centralized Model Routing & Multi-Provider Abstraction
+
+- **Universal Model Identifiers**: The gateway normalizes model names using the LiteLLM standard syntax (`<provider>/<model_name>`):
+  - `groq/llama-3.3-70b-versatile`
+  - `groq/qwen/qwen3.8-27b`
+  - `openai/gpt-4o`
+  - `anthropic/claude-3-5-sonnet`
+- **Dynamic Normalization (`format_model_id`)**: If an unqualified model name (e.g. `llama-3.3-70b-versatile`) is configured in `.env`, the gateway automatically formats it as `groq/llama-3.3-70b-versatile`. Switching providers requires updating only the model string without changing code.
+- **Parameter Dropping (`litellm.drop_params = True`)**: Ensures that parameters specific to one provider do not cause crashes when migrating requests to alternative providers.
+
+#### Gateway Tool Call Budgeting & Runaway Protection
+
+Tool execution guardrails are now enforced centrally at the gateway level rather than individually in agent scripts:
+- **Max Tool Call Limit (`AGENT_TOOL_CALL_LIMIT`)**: The gateway injects `tool_call_limit=self.settings.agent_tool_call_limit` (default: `5`) into every agent via `gateway.create_agent()`.
+- **Token Budgeting**: Single price checks are capped at `STOCK_PRICE_MAX_TOKENS` (default: `200`) to guarantee fast, sub-second responses and predictable token usage.
+- **Runaway Loop Mitigation**: If an agent attempts more than the allocated budget of tool calls, the gateway halts execution, preventing infinite loops and billing spikes.
+
+#### Gateway Multi-Tier Caching (LiteLLM In-Memory & Atomic Disk)
+
+Caching has been moved into the LLM Gateway layer, providing a 3-tier caching hierarchy:
+
+```mermaid
+flowchart TD
+    Req[Incoming Query] --> T1{Tier 1: In-Memory\nLiteLLM Cache}
+    T1 -->|Hit| Ret[Immediate Return]
+    T1 -->|Miss| T2{Tier 2: Persistent Disk\nResponseCache JSON}
+    T2 -->|Hit| Ret
+    T2 -->|Miss| Live[Invoke Upstream Model via LiteLLM]
+    Live --> SaveT1[Save to Tier 1 In-Memory]
+    SaveT1 --> SaveT2[Save to Tier 2 Disk via Atomic Replace]
+    SaveT2 --> Ret
+```
+
+1. **Tier 1: LiteLLM Native In-Memory Cache**:
+   Configured in `gateway.py` with `litellm.cache = Cache(type="local", ttl=settings.cache_ttl_seconds)`. Fast RAM cache that skips completion requests for identical prompts during the current process lifetime.
+2. **Tier 2: Persistent Atomic Disk Cache (`ResponseCache`)**:
+   Managed by the gateway in `cache/responses.json`. Generates SHA-256 digests based on `namespace:model:query`:
+   $$\text{Key} = \text{SHA256}(\text{"namespace:model:query"})$$
+   Uses `tempfile.NamedTemporaryFile` + `os.replace` for atomic file writes to prevent JSON corruption during concurrent access or unexpected terminations.
+3. **Tier 3: Streamlit Session State**:
+   Client-side in-memory cache in `streamlit_app.py` storing the active `ResearchResult` and translated Hindi reports (`(ticker, mode, "Hindi")`) for instantaneous language toggling without hitting disk or translation APIs.
+
+#### Tool Calling Architecture & Safe Aliasing
 
 ```mermaid
 sequenceDiagram
     autonumber
-    actor User as User / Streamlit
+    actor User as User / Analyst
     participant RS as ResearchService
+    participant GW as LLMGateway
     participant Agent as Agno Agent
-    participant Groq as Groq LLM API
+    participant Lite as LiteLLM Core
+    participant Upstream as Groq / Upstream LLM
     participant Tools as Tools (YFinance / DuckDuckGo)
 
     User->>RS: run(ticker="TATAMOTORS.NS", mode="stock_price")
-    RS->>Agent: agent.run(query)
-    Agent->>Groq: Completion request with request.tools
-    Note over Groq: Server-side validation of tool call name
-    alt Valid Tool Call
-        Groq-->>Agent: <tool_call> get_current_stock_price(ticker="TATAMOTORS.NS")
-        Agent->>Tools: Invoke get_current_stock_price()
-        Tools-->>Agent: Raw price data / quote
-        Agent->>Groq: Submit tool output
-        Groq-->>Agent: Formatted completion
-        Agent-->>RS: Final ResearchResult
-    else Transient Validation or Network Error
-        Groq-->>Agent: tool_use_failed (e.g. searchNews)
-        Agent->>Agent: Retry #1 (background retry)
-        Agent->>Groq: Re-run with normalized snake_case tools
-        Groq-->>Agent: Successful completion
-        Agent-->>RS: Final ResearchResult
+    RS->>GW: get_cached("stock_price", query)
+    alt Cache Hit
+        GW-->>RS: Return cached text
+    else Cache Miss
+        RS->>Agent: agent.run(query)
+        Agent->>Lite: Chat completion request
+        Lite->>Upstream: Standardized tool schema
+        Upstream-->>Lite: <tool_call> get_current_stock_price(...)
+        Lite-->>Agent: Execute tool
+        Agent->>Tools: Invoke function
+        Tools-->>Agent: Tool output data
+        Agent->>Lite: Forward tool output
+        Lite->>Upstream: Final completion
+        Upstream-->>RS: ResearchResult
+        RS->>GW: set_cached("stock_price", query, result)
     end
-    RS-->>User: Display Stock Price Result
+    RS-->>User: Render Stock Price / Report
 ```
 
-#### Registered Tools & Function Signatures
-
-1. **`YFinanceTools`**:
-   - `get_current_stock_price(ticker: str) -> str`: Fetches live market quotes, currency, and update timestamps.
-   - `get_company_news(ticker: str) -> str`: Retrieves recent corporate headlines and press releases.
-   - `get_analyst_recommendations(ticker: str) -> str`: Obtains consensus ratings (Buy/Hold/Sell) and target prices.
-   - `get_income_statements(ticker: str) -> str`: Pulls quarterly and annual financial balance sheets and revenue figures.
-2. **`DuckDuckGoTools`**:
-   - `web_search(query: str) -> str`: Conducts real-time web searches to retrieve market commentary, external perspectives, and source URLs.
-   - `search_news(query: str) -> str`: Searches indexed news articles. *(Enabled in detailed research; disabled in stock price check to prevent model confusion).*
-3. **`searchNews(query: str) -> str` (Safe Alias Tool)**:
-   - Standalone Python function registered directly in `tools=[...]` of the stock price agent.
-   - Directly maps to DuckDuckGo search. Acts as a safety net if a model emits camelCase `<function=searchNews>`, allowing Groq's server-side tool validator to accept the call rather than aborting the request.
-
-#### Multi-Agent Delegation Flow
-
-For comprehensive equity research (`main-with-details.py` and `_get_detailed_agent`), the platform implements a hierarchical multi-agent team:
-- **`finance_agent`**: Bounded to Yahoo Finance tools; strictly instructed to extract structured financial data and format outputs using Markdown tables.
-- **`web_agent`**: Bounded to DuckDuckGo tools; strictly instructed to gather recent market developments and always cite source URLs.
-- **`agent_team` (Coordinator Agent)**: Orchestrates both specialist agents. It decomposes the user's research request, invokes `finance_agent` for quantitative financial figures, invokes `web_agent` for qualitative catalysts, and synthesizes both outputs into a unified report.
-
-#### Groq Server-Side Validation & Naming Normalization
-
-Groq validates generated tool calls against `request.tools` on the server:
-- **The Issue**: Certain open-weights models (e.g. `qwen/qwen3.8-27b`) occasionally emit tool names in camelCase (e.g. `<function=searchNews>`) rather than the declared snake_case (`search_news` or `web_search`). If a function name does not exactly match `request.tools`, Groq throws an HTTP 400 `invalid_request_error: tool_use_failed`.
-- **The Mitigation**:
-  1. **Tool Decoupling**: In `_get_stock_price_agent`, news search is disabled (`enable_news=False`) so only `web_search` and `get_current_stock_price` are exposed.
-  2. **Explicit Fallback Tool**: `searchNews` is explicitly registered in `tools=[...]` so Groq's validator recognizes it if emitted.
-  3. **Prompt Hardening**: Instructions explicitly direct the model to use exact snake_case function names (`get_current_stock_price`, `web_search`) and teach the model how to map company names (e.g. `"Tata Motors"`) to exchange tickers (`TATAMOTORS.NS`).
-
-#### Tool Call Budget & Runaway Protection
-
-Every agent instance is bound by `tool_call_limit=settings.agent_tool_call_limit` (default: `5`):
-- Prevents agents from entering recursive loops (e.g., repeatedly calling search tools without concluding).
-- Halts execution once the budget is exhausted, preventing runaway inference billing and high latency.
+- **Registered Tools**:
+  - `YFinanceTools`: `get_current_stock_price`, `get_company_news`, `get_analyst_recommendations`, `get_income_statements`.
+  - `DuckDuckGoTools`: `web_search` and `search_news` (isolated to detailed research to avoid model confusion during price checks).
+  - `searchNews`: Registered fallback tool function in `tools=[...]` to catch model camelCase hallucinations without triggering Groq schema validation errors.
+- **Hierarchical Delegation**: The coordinator agent receives sub-agents (`web_agent` and `finance_agent`) in its `tools` list, orchestrating fundamental financial checks and qualitative web intelligence into a unified report.
 
 #### Anti-Blocking Session & Regional Ticker Support
 
-- **Custom Browser Emulation**: Yahoo Finance often blocks generic Python scraping scripts with HTTP 403 Forbidden. `research_service.py` attaches a custom `requests.Session` with desktop Chrome headers:
-  ```python
-  session.headers.update({
-      "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36",
-      "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
-      "Accept-Language": "en-US,en;q=0.9",
-  })
-  ```
-- **Regional Ticker Resolution**: For Indian equities (e.g., `BHEL`, `TATAMOTORS`, `RPOWER`, `JKTYRE`), instructions direct the agent to query with `.NS` (NSE) or `.BO` (BSE) suffixes if omitted by the user.
-- **Failover Strategy**: If Yahoo Finance encounters rate limits or errors, the stock price agent automatically fails over to `web_search` to retrieve quotes.
+- **Browser Emulation**: Attaches a custom `requests.Session` with desktop Chrome headers (`User-Agent: Mozilla/5.0...`, `Accept`, `Accept-Language`) to `YFinanceTools` to prevent HTTP 403 Forbidden blocks.
+- **Regional Ticker Resolution**: Automatically instructs the agent to append `.NS` (NSE) or `.BO` (BSE) for Indian tickers (e.g., `BHEL`, `TATAMOTORS`, `RPOWER`, `JKTYRE`).
+- **Failover Strategy**: If Yahoo Finance is blocked or unavailable, the agent seamlessly falls back to DuckDuckGo search.
 
-#### Automated Retry Mechanism
+#### Automated Gateway Retries & Resilience
 
-- **Agent Retries**: Configured with `retries=2, delay_between_retries=1` on the Agno `Agent` to retry transient API blips.
-- **Service Retry Loop**: `ResearchService.run` wraps tool execution in an automated retry handler. If a transient tool validation or network glitch occurs on attempt 1, it logs a `research_retry` event and re-executes immediately, ensuring a smooth user experience.
-
----
-
-### Cache Implementation & Storage Engine
-
-The caching subsystem in `src/investment_research/cache.py` (`ResponseCache`) provides an atomic, file-based JSON caching layer designed to eliminate redundant LLM inference costs and reduce response latencies.
-
-```mermaid
-flowchart TD
-    Req[Incoming Request: namespace, query, model] --> Hash[Generate SHA-256 Key]
-    Hash --> Check{Cache File Exists & Readable?}
-
-    Check -->|No| Miss[Cache Miss: Execute Live Request]
-    Check -->|Yes| Find{Entry in JSON?}
-
-    Find -->|No| Miss
-    Find -->|Yes| Expire{time - created_at < TTL?}
-
-    Expire -->|No| Miss
-    Expire -->|Yes| Hit[Cache Hit: Return Stored Response]
-
-    Miss --> Live[Agent Completes Request]
-    Live --> Write{Cache Enabled & TTL > 0?}
-    Write -->|No| Return[Return Live Response]
-    Write -->|Yes| Temp[Write JSON to cache/responses.json.tmp]
-    Temp --> Atomic[Atomic os.replace to cache/responses.json]
-    Atomic --> Return
-```
-
-#### Deterministic SHA-256 Keying Strategy
-
-Each cache key is generated by taking the SHA-256 hexadecimal digest of a UTF-8 encoded composite key:
-
-$$\text{Cache Key} = \text{SHA256}(\text{"namespace:model:query"})$$
-
-- **`namespace`**: Isolates independent application workflows (e.g. `"stock_price"` vs. `"detailed_research"`).
-- **`model`**: Isolates model IDs (e.g. `qwen/qwen3.8-27b` vs. `llama-3.3-70b-versatile`) so changing models never returns stale responses from a previous model architecture.
-- **`query`**: The exact normalized query string (e.g. `"What is the current stock price of TATAMOTORS.NS?"`).
-
-Example stored record in `cache/responses.json`:
-```json
-{
-  "8f4b1d62c1a8e9e...": {
-    "created_at": 1731478200.125,
-    "response": "Current Stock Price: ₹980.50 INR (Last updated: 2026-11-13)"
-  }
-}
-```
-
-#### Atomic File Write Mechanism
-
-Writing directly to a shared cache file with standard Python `open(..., "w")` truncates the file before writing, risking corruption (`JSONDecodeError`) if the process crashes, the disk fills, or concurrent threads read mid-write.
-
-`ResponseCache.set()` solves this using atomic filesystem operations:
-1. **Directory Guarantee**: Ensures `cache/` directory exists with `mkdir(parents=True, exist_ok=True)`.
-2. **Temporary File Write**: Writes the updated JSON structure to a temporary file via `tempfile.NamedTemporaryFile` in the **same directory** (`cache/responses.json.<random>.tmp`).
-3. **Atomic Replacement**: Calls `os.replace(temporary_path, self.path)`. On modern operating systems (Windows NTFS and POSIX filesystems), `os.replace` is an atomic filesystem syscall that re-points the directory inode/entry instantaneously.
-4. **Guaranteed Cleanup**: A `finally` block ensures that any unlinked temporary files are cleanly removed if an unexpected exception occurs.
-
-#### TTL Expiration & Eviction Policy
-
-- **Time-to-Live**: Controlled by `CACHE_TTL_SECONDS` (default: `900` seconds / 15 minutes).
-- **Validation**: When retrieving an entry:
-  $$\Delta t = t_{\text{current}} - t_{\text{created}}$$
-  If $\Delta t \ge \text{ttl\_seconds}$, the entry is discarded and treated as a cache miss.
-- **Bypass Mode**: Setting `CACHE_TTL_SECONDS=0` or `CACHE_ENABLED=false` completely bypasses disk reads and writes.
-
-#### Fail-Open Resilience & Error Recovery
-
-The cache is designed to fail open so it never breaks the user application:
-- All disk reads and writes catch `(OSError, ValueError, KeyError, TypeError)`.
-- If `cache/responses.json` is missing, unreadable, locked, or corrupted with invalid JSON, `cache.get()` silently treats it as a cache miss (`None`).
-- **Auto-Healing**: If a corrupted file exists, the next valid `cache.set()` call automatically replaces the corrupt file with a valid JSON payload.
-
-#### Multi-Tiered Caching (Disk vs Session State)
-
-The application implements a two-tier caching architecture:
-
-| Cache Tier | Storage Location | Lifetime | Content Stored | Purpose |
-| --- | --- | --- | --- | --- |
-| **Disk Cache (`ResponseCache`)** | `cache/responses.json` | 15 min (Configurable via `CACHE_TTL_SECONDS`) | Raw LLM research responses | Persists across app reboots; skips LLM and finance API calls for identical queries. |
-| **Session Cache (`st.session_state`)** | Browser / Streamlit Memory | Active Browser Session | Active `ResearchResult` and translated Hindi reports | Eliminates redundant translation calls when users toggle between English and Hindi. |
+- **Gateway-Level Retries**: `litellm.num_retries = 2` automatically retries upstream provider failures (e.g. HTTP 429 rate limits, 502/503 timeouts).
+- **Agent-Level Retries**: `retries=2, delay_between_retries=1` enforced on Agno `Agent` by `gateway.create_agent()`.
+- **Service Retry Loop**: `ResearchService.run` catches any transient tool validation errors and re-executes automatically in the background.
 
 ### Translation Pipeline & Cost Optimization
 The translation layer in `src/investment_research/translator.py` translates reports into Hindi without incurring LLM inference costs:
@@ -600,11 +553,16 @@ pytest
 
 To run offline/unit tests without network calls:
 ```powershell
-uv run pytest tests/test_cache.py tests/test_market_data.py tests/test_report_format.py tests/test_settings.py tests/test_technicals.py tests/test_research_service.py
+uv run pytest tests/test_gateway.py tests/test_cache.py tests/test_market_data.py tests/test_report_format.py tests/test_settings.py tests/test_technicals.py tests/test_research_service.py
 ```
 
 ### Test Suite Coverage
 
+- **`test_gateway.py`**:
+  - Model ID formatting and provider prefix normalization (`groq/...`, `openai/...`).
+  - Agent factory verification ensuring strict `tool_call_limit` injection into all instantiated agents.
+  - Multi-tier cache roundtrip (get/set) and cache bypass verification when disabled.
+  - LLM response metric extraction (prompt tokens, completion tokens, cost).
 - **`test_cache.py`**:
   - Cache set and get round-trip verification.
   - TTL expiration and stale entry invalidation.

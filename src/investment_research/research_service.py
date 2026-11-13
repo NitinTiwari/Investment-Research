@@ -10,6 +10,7 @@ from agno.tools.yfinance import YFinanceTools
 
 from investment_research.cache import ResponseCache, response_text
 from investment_research.data.market_data import normalize_ticker
+from investment_research.gateway import LLMGateway
 from investment_research.observability import (
     configure_logging,
     extract_response_metrics,
@@ -66,26 +67,20 @@ class ResearchService:
     def __init__(self, app_settings: Settings = settings) -> None:
         self.settings = app_settings
         self.logger = configure_logging(app_settings.log_level, app_settings.log_file)
-        self.cache = ResponseCache(app_settings.cache_file, app_settings.cache_ttl_seconds)
+        self.gateway = LLMGateway(app_settings)
+        self.cache = self.gateway._cache
         self._stock_price_agent: Agent | None = None
         self._detailed_agent: Agent | None = None
 
     def _get_stock_price_agent(self) -> Agent:
         if self._stock_price_agent is None:
-            model = Groq(
-                id=self.settings.model_name,
-                max_tokens=self.settings.stock_price_max_tokens,
-            )
-            self._stock_price_agent = Agent(
-                model=model,
-                retries=2,
-                delay_between_retries=1,
-                tool_call_limit=self.settings.agent_tool_call_limit,
+            self._stock_price_agent = self.gateway.create_agent(
                 tools=[
                     YFinanceTools(enable_stock_price=True, session=_create_yfinance_session()),
                     _create_ddg_tools(enable_news=False),
                     searchNews,
                 ],
+                max_tokens=self.settings.stock_price_max_tokens,
                 instructions=[
                     "You are a precise financial ticker. Look up the current stock price using your tools.",
                     "If given a company name instead of an exchange ticker (e.g. 'Tata Motors', 'State Bank of India', 'Reliance'), map it to its official exchange ticker symbol (e.g. 'TATAMOTORS.NS', 'SBIN.NS', 'RELIANCE.NS').",
@@ -96,26 +91,19 @@ class ResearchService:
                     "Do not include introductory text, extra analysis, tables, or conversational filler.",
                 ],
                 markdown=True,
+                agent_cls=Agent,
             )
         return self._stock_price_agent
 
     def _get_detailed_agent(self) -> Agent:
         if self._detailed_agent is None:
-            model = Groq(id=self.settings.model_name)
-            web_agent = Agent(
-                model=model,
-                retries=2,
-                delay_between_retries=1,
-                tool_call_limit=self.settings.agent_tool_call_limit,
+            web_agent = self.gateway.create_agent(
                 tools=[_create_ddg_tools(enable_news=True)],
                 instructions="always include sources",
                 markdown=True,
+                agent_cls=Agent,
             )
-            finance_agent = Agent(
-                model=model,
-                retries=2,
-                delay_between_retries=1,
-                tool_call_limit=self.settings.agent_tool_call_limit,
+            finance_agent = self.gateway.create_agent(
                 tools=[YFinanceTools(enable_stock_price=True, session=_create_yfinance_session())],
                 instructions=[
                     "You are a precise financial ticker. Look up the current stock price using your tools.",
@@ -123,12 +111,9 @@ class ResearchService:
                     "Do not include any introductory text, extra analysis, tables, or conversational filler.",
                 ],
                 markdown=True,
+                agent_cls=Agent,
             )
-            self._detailed_agent = Agent(
-                model=model,
-                retries=2,
-                delay_between_retries=1,
-                tool_call_limit=self.settings.agent_tool_call_limit,
+            self._detailed_agent = self.gateway.create_agent(
                 tools=[web_agent, finance_agent],
                 markdown=True,
                 instructions=[
@@ -136,6 +121,7 @@ class ResearchService:
                     "use table to display data",
                     "write a detailed research report on the company",
                 ],
+                agent_cls=Agent,
             )
         return self._detailed_agent
 
@@ -171,7 +157,7 @@ class ResearchService:
         )
 
         if self.settings.cache_enabled:
-            cached_response = self.cache.get(mode, query, self.settings.model_name)
+            cached_response = self.gateway.get_cached(mode, query)
             if cached_response is not None:
                 duration_ms = round((perf_counter() - started_at) * 1000, 2)
                 log_event(
@@ -193,10 +179,10 @@ class ResearchService:
                 if text is None:
                     text = str(getattr(response, "content", response))
                 if self.settings.cache_enabled:
-                    self.cache.set(mode, query, self.settings.model_name, text)
+                    self.gateway.set_cached(mode, query, text)
 
                 duration_ms = round((perf_counter() - started_at) * 1000, 2)
-                metrics = extract_response_metrics(response)
+                metrics = self.gateway.extract_metrics(response)
                 log_event(
                     self.logger,
                     "research_completed",

@@ -16,6 +16,7 @@ dependencies = [
     "groq<1.0.0",
     "langchain>=1.4.2",
     "langchain-groq",
+    "litellm>=1.109.1",
     "pydantic>=2.13.5",
     "pytest>=8.0.0",
     "streamlit>=1.57.0",

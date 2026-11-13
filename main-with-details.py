@@ -1,50 +1,42 @@
-from agno.agent import Agent
-from agno.tools.duckduckgo import DuckDuckGoTools
-from agno.tools.yfinance import YFinanceTools
-from agno.models.groq import Groq 
-from investment_research.cache import ResponseCache, response_text
-from investment_research.data.market_data import normalize_ticker
-from investment_research.observability import (
-    configure_logging,
-    extract_response_metrics,
-    log_event,
-)
-from investment_research.settings import settings
 from time import perf_counter
 
+from agno.tools.duckduckgo import DuckDuckGoTools
+from agno.tools.yfinance import YFinanceTools
+from investment_research.cache import response_text
+from investment_research.data.market_data import normalize_ticker
+from investment_research.gateway import gateway
+from investment_research.observability import configure_logging, log_event
+from investment_research.settings import settings
+
 logger = configure_logging(settings.log_level, settings.log_file)
-cache = ResponseCache(settings.cache_file, settings.cache_ttl_seconds)
 
-llm = Groq(id=settings.model_name)
-
-web_agent = Agent(
-    model=llm,
+# 1. BUILD MULTI-AGENT TEAM THROUGH LITELLM GATEWAY
+web_agent = gateway.create_agent(
     tools=[DuckDuckGoTools()],
     instructions="always include sources",
-    markdown=True
+    markdown=True,
 )
 
-finance_agent = Agent(
-    model=llm,
+finance_agent = gateway.create_agent(
     tools=[
         YFinanceTools(
-            enable_stock_price=True, 
-            enable_company_news=True, 
-            enable_analyst_recommendations=True, 
-            enable_income_statements=True
+            enable_stock_price=True,
+            enable_company_news=True,
+            enable_analyst_recommendations=True,
+            enable_income_statements=True,
         )
     ],
     instructions="use table to display data",
-    markdown=True
+    markdown=True,
 )
 
-agent_team = Agent(
-    model=llm,
+agent_team = gateway.create_agent(
     tools=[web_agent, finance_agent],
     markdown=True,
     instructions=["always include sources", "use table to display data", "write a detailed research report on the company"],
 )
 
+# 2. INTERACTIVE RESEARCH REPL
 while True:
     try:
         input_data = input("Enter ticker symbol: ")
@@ -76,11 +68,11 @@ while True:
         application="detailed_research",
         ticker=input_data,
         query=query,
-        model=settings.model_name,
+        model=gateway.format_model_id(),
         configured_tools=["DuckDuckGoTools", "YFinanceTools"],
     )
 
-    cached_response = cache.get("detailed_research", query, settings.model_name) if settings.cache_enabled else None
+    cached_response = gateway.get_cached("detailed_research", query)
     if cached_response is not None:
         print(cached_response)
         log_event(
@@ -95,15 +87,15 @@ while True:
     try:
         response = agent_team.print_response(query, stream=True)
         generated_text = response_text(response)
-        if generated_text is not None and settings.cache_enabled:
-            cache.set("detailed_research", query, settings.model_name, generated_text)
+        if generated_text is not None:
+            gateway.set_cached("detailed_research", query, generated_text)
         log_event(
             logger,
             "research_completed",
             application="detailed_research",
             ticker=input_data,
             duration_ms=round((perf_counter() - started_at) * 1000, 2),
-            response_metrics=extract_response_metrics(response),
+            response_metrics=gateway.extract_metrics(response),
         )
     except Exception as error:
         logger.exception(
@@ -117,4 +109,3 @@ while True:
             },
         )
         print(f"Research failed for {input_data}: {error}")
-

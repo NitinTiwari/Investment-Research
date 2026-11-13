@@ -34,6 +34,7 @@ st.caption("Run a focused price check or generate a source-backed equity researc
 
 with st.sidebar:
     st.header("Research setup")
+    st.caption("Gateway: `LiteLLM`")
     st.caption(f"Model: `{settings.model_name}`")
     st.caption(f"Cache: {'enabled' if settings.cache_enabled else 'disabled'}")
     st.divider()
