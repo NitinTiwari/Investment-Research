@@ -35,7 +35,7 @@ def _get_bool(name: str, default: bool) -> bool:
 @dataclass(frozen=True)
 class Settings:
     app_name: str = os.getenv("APP_NAME", "Market Research")
-    model_name: str = os.getenv("GROQ_MODEL", "openai/gpt-oss-20b")
+    model_name: str = os.getenv("GROQ_MODEL", "qwen/qwen3.8-27b")
     stock_price_max_tokens: int = _get_int("STOCK_PRICE_MAX_TOKENS", 200)
     agent_tool_call_limit: int = _get_positive_int("AGENT_TOOL_CALL_LIMIT", 5)
     default_ticker: str = os.getenv("DEFAULT_TICKER", "BHEL")
@@ -43,7 +43,7 @@ class Settings:
     log_file: str = os.getenv("LOG_FILE", "logs/app.log")
     cache_enabled: bool = _get_bool("CACHE_ENABLED", True)
     cache_file: str = os.getenv("CACHE_FILE", "cache/responses.json")
-    cache_ttl_seconds: int = _get_int("CACHE_TTL_SECONDS", 30)
+    cache_ttl_seconds: int = _get_int("CACHE_TTL_SECONDS", 100)
 
 
 settings = Settings()

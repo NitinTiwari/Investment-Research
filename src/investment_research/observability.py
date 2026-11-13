@@ -61,6 +61,8 @@ def extract_response_metrics(response: Any) -> dict[str, Any]:
         return {}
     if hasattr(metrics, "model_dump"):
         return metrics.model_dump()
+    if hasattr(metrics, "to_dict"):
+        return metrics.to_dict()
     if isinstance(metrics, dict):
         return metrics
     return {"value": metrics}

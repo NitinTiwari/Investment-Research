@@ -94,6 +94,13 @@ Investment Research bridges large language models and real-time financial market
   - **Daily Returns (`daily_returns`)**: Calculates period-over-period percentage price changes.
   - **Maximum Drawdown (`maximum_drawdown`)**: Computes peak-to-trough drop over historical price sequences.
 
+### 7. Real-Time LLM Telemetry Dashboard
+- Integrated directly into the Streamlit sidebar under the **"Research Setup"** panel:
+  - **💾 Cache Details**: Real-time indication of cache `HIT` vs `MISS`, lookup latency in milliseconds, SHA256 cache key hash, storage tier (`Tier-2 Atomic Disk Cache`), and estimated latency/tokens saved.
+  - **🪙 Token Usage**: Micro-breakdown of Prompt, Output, and Total tokens with estimated API costs (and visual indicator when 0 tokens are consumed on a cache hit).
+  - **🔧 Called Tools & Durations**: Complete inventory of every tool invoked (e.g., `get_current_stock_price`, `duckduckgo_search`) with per-tool execution timings in milliseconds, status icons, and input arguments.
+  - **🔄 Data Flow Steps**: Sequential step-by-step audit trace from Ticker Normalization to Gateway Cache Check, Tool Execution, LLM Synthesis, and Cache Commit.
+
 ---
 
 ## System Architecture
@@ -165,6 +172,7 @@ Investment-Research/
 │       ├── settings.py                # Centralized immutable configuration (Settings)
 │       ├── gateway.py                 # LiteLLM Gateway (routing, tool limits, multi-tier cache)
 │       ├── research_service.py        # High-level orchestration service (ResearchService)
+│       ├── telemetry_ui.py            # Streamlit LLM Telemetry sidebar renderer
 │       ├── cache.py                   # Atomic JSON caching engine (ResponseCache)
 │       ├── observability.py           # Structured JSON-lines logger & metric extractor
 │       ├── translator.py              # Zero-LLM text chunking & Hindi translation pipeline
@@ -175,6 +183,8 @@ Investment-Research/
 │       └── reports/
 │           └── report_format.py       # Markdown report structuring and required sections
 └── tests/                             # Deterministic unit and integration test suite
+    ├── conftest.py                    # Pytest environment setup (offline model cost maps)
+    ├── test_telemetry.py              # LLM Telemetry UI component rendering tests
     ├── test_gateway.py                # LiteLLM Gateway model formatting, tool limits, and caching
     ├── test_cache.py                  # Cache hits, misses, TTL, and corruption recovery
     ├── test_market_data.py            # Ticker normalization and validation tests
@@ -553,11 +563,13 @@ pytest
 
 To run offline/unit tests without network calls:
 ```powershell
-uv run pytest tests/test_gateway.py tests/test_cache.py tests/test_market_data.py tests/test_report_format.py tests/test_settings.py tests/test_technicals.py tests/test_research_service.py
+uv run pytest tests/test_telemetry.py tests/test_gateway.py tests/test_research_service.py tests/test_cache.py tests/test_market_data.py tests/test_report_format.py tests/test_settings.py tests/test_technicals.py
 ```
 
 ### Test Suite Coverage
 
+- **`test_telemetry.py`**:
+  - Validates rendering of the sidebar LLM Telemetry panel across all scenarios: initial empty state, Cache HIT (0 tokens, bypassed tools), and Cache MISS (with active tool executions and latency metrics).
 - **`test_gateway.py`**:
   - Model ID formatting and provider prefix normalization (`groq/...`, `openai/...`).
   - Agent factory verification ensuring strict `tool_call_limit` injection into all instantiated agents.

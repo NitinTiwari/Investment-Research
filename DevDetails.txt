@@ -68,6 +68,12 @@ Core User Capabilities:
 5. Export Options:
    - Download reports directly as formatted Markdown (.md) or clean plain text (.txt).
 
+6. Real-Time LLM Telemetry (Sidebar under Research Setup):
+   - Called Tools: Lists every invoked tool with millisecond duration, success/fail icon, and input args.
+   - Used Tokens: Micro-breakdown of Prompt, Output, and Total tokens with estimated API costs.
+   - Data Flow Steps: Visual step-by-step audit trace from normalization to cache checks, tools, and delivery.
+   - Cache Details: Indicates HIT vs MISS, lookup latency in ms, SHA256 key, and estimated tokens saved.
+
 ================================================================================
 3. ARCHITECTURE & SYSTEM DESIGN
 ================================================================================
@@ -178,9 +184,12 @@ Key Gateway Responsibilities:
    - We configured `LITELLM_LOCAL_MODEL_COST_MAP=true` and `LITELLM_TELEMETRY=false`,
      reducing module load time to sub-second.
 
-5. Cost & Token Monitoring:
+5. Cost, Token & Execution Telemetry:
    - Extracts exact prompt tokens, completion tokens, and dollar cost estimates
      consistently across providers.
+   - Extracts tool execution timings (`duration_ms`), status, and arguments.
+   - Tracks data flow steps from input normalization through cache lookups and report delivery.
+   - Renders live in the Streamlit UI sidebar under 'Research Setup' via `telemetry_ui.py`.
 
 ================================================================================
 6. CACHING STRATEGY (MULTI-TIER, ATOMIC DISK, AND TTL)

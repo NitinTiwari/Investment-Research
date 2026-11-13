@@ -1,6 +1,10 @@
 import os
 import streamlit as st
 
+# Optimize LiteLLM for fast local initialization and zero telemetry
+os.environ.setdefault("LITELLM_LOCAL_MODEL_COST_MAP", "true")
+os.environ.setdefault("LITELLM_TELEMETRY", "false")
+
 # Sync Streamlit Cloud secrets to os.environ so Groq and tools can access them
 try:
     for _key, _value in st.secrets.items():
@@ -11,6 +15,7 @@ except Exception:
 
 from investment_research.research_service import ResearchResult, ResearchService
 from investment_research.settings import settings
+from investment_research.telemetry_ui import render_telemetry_panel
 
 st.set_page_config(
     page_title=settings.app_name,
@@ -40,6 +45,7 @@ with st.sidebar:
     st.divider()
     st.markdown("**Workflow**")
     st.markdown("1. Enter a ticker\n2. Choose a research action\n3. Review the result and sources\n4. Switch language (English/Hindi) without extra LLM calls")
+    telemetry_container = st.container()
 
 with st.form("research_form", border=True):
     ticker = st.text_input(
@@ -82,6 +88,8 @@ if selected_mode:
         st.error(str(error))
     except Exception:
         st.error("The research service is temporarily unavailable. Check your API key and try again.")
+
+render_telemetry_panel(telemetry_container, st.session_state.research_result)
 
 # Language selection dropdown (English / Hindi)
 col_spacer, col_lang = st.columns([3, 1])

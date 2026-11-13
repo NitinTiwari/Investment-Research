@@ -114,6 +114,109 @@ class LLMGateway:
         """Extract usage and performance metrics from agent or LLM response."""
         return extract_response_metrics(response)
 
+    def get_cache_key(self, namespace: str, query: str, model_id: str | None = None) -> str:
+        """Compute the unique cache key for a namespace, query, and model."""
+        model_name = self.format_model_id(model_id)
+        return self._cache._key(namespace, query, model_name)
+
+    def extract_tool_calls(self, response: Any) -> list[dict[str, Any]]:
+        """Extract tool names, arguments, execution duration, and status from a response."""
+        extracted: list[dict[str, Any]] = []
+
+        # 1. Primary check: response.tools
+        tools = getattr(response, "tools", None) or []
+        for t in tools:
+            name = (
+                getattr(t, "tool_name", None)
+                or (t.get("tool_name") if isinstance(t, dict) else None)
+                or getattr(t, "name", None)
+                or (t.get("name") if isinstance(t, dict) else None)
+                or "tool"
+            )
+            args = (
+                getattr(t, "tool_args", None)
+                or (t.get("tool_args") if isinstance(t, dict) else None)
+                or getattr(t, "args", None)
+                or {}
+            )
+            metrics = getattr(t, "metrics", None) or (t.get("metrics") if isinstance(t, dict) else None)
+            duration: float | None = None
+            if metrics is not None:
+                duration = getattr(metrics, "duration", None) or (
+                    metrics.get("duration") if isinstance(metrics, dict) else None
+                )
+
+            error = getattr(t, "tool_call_error", False) or (
+                t.get("tool_call_error") if isinstance(t, dict) else False
+            )
+
+            extracted.append({
+                "name": str(name),
+                "args": args if isinstance(args, dict) else {},
+                "duration_s": round(float(duration), 3) if isinstance(duration, (int, float)) else None,
+                "duration_ms": round(float(duration) * 1000, 1) if isinstance(duration, (int, float)) else None,
+                "error": bool(error),
+            })
+
+        # 2. Secondary check: response.events for ToolCallCompletedEvent
+        if not extracted and hasattr(response, "events") and response.events:
+            for event in response.events:
+                tool_obj = getattr(event, "tool", None)
+                if tool_obj is not None:
+                    name = getattr(tool_obj, "tool_name", "tool")
+                    args = getattr(tool_obj, "tool_args", {})
+                    metrics = getattr(tool_obj, "metrics", None)
+                    duration = getattr(metrics, "duration", None) if metrics else None
+                    extracted.append({
+                        "name": str(name),
+                        "args": args if isinstance(args, dict) else {},
+                        "duration_s": round(float(duration), 3) if isinstance(duration, (int, float)) else None,
+                        "duration_ms": round(float(duration) * 1000, 1) if isinstance(duration, (int, float)) else None,
+                        "error": bool(getattr(tool_obj, "tool_call_error", False)),
+                    })
+
+        # 3. Tertiary check: response.messages for function/tool calls
+        if not extracted and hasattr(response, "messages") and response.messages:
+            for msg in response.messages:
+                msg_tool_calls = getattr(msg, "tool_calls", None) or []
+                for tc in msg_tool_calls:
+                    func = tc.get("function", {}) if isinstance(tc, dict) else getattr(tc, "function", None)
+                    fn_name = func.get("name") if isinstance(func, dict) else getattr(func, "name", "tool")
+                    extracted.append({
+                        "name": str(fn_name),
+                        "args": {},
+                        "duration_s": None,
+                        "duration_ms": None,
+                        "error": False,
+                    })
+
+        return extracted
+
+    def extract_tokens(self, response: Any) -> dict[str, Any]:
+        """Extract prompt, completion, total token counts, and cost estimates."""
+        metrics = self.extract_metrics(response)
+        prompt_tokens = (
+            metrics.get("prompt_tokens")
+            or metrics.get("input_tokens")
+            or 0
+        )
+        completion_tokens = (
+            metrics.get("completion_tokens")
+            or metrics.get("output_tokens")
+            or 0
+        )
+        total_tokens = (
+            metrics.get("total_tokens")
+            or (prompt_tokens + completion_tokens)
+        )
+        cost = metrics.get("cost", 0.0) or 0.0
+        return {
+            "prompt_tokens": int(prompt_tokens),
+            "completion_tokens": int(completion_tokens),
+            "total_tokens": int(total_tokens),
+            "cost": float(cost),
+        }
+
 
 gateway = LLMGateway()
 

@@ -71,3 +71,47 @@ def test_gateway_extract_metrics() -> None:
 
     metrics = gateway.extract_metrics(FakeResponse())
     assert metrics == {"input_tokens": 100, "output_tokens": 50}
+
+
+def test_gateway_extract_tool_calls() -> None:
+    gateway = LLMGateway()
+
+    class FakeMetrics:
+        duration = 0.234
+
+    class FakeToolExecution:
+        tool_name = "get_current_stock_price"
+        tool_args = {"symbol": "TATAMOTORS.NS"}
+        tool_call_error = False
+        metrics = FakeMetrics()
+
+    class FakeResponse:
+        tools = [FakeToolExecution()]
+
+    tools = gateway.extract_tool_calls(FakeResponse())
+    assert len(tools) == 1
+    assert tools[0]["name"] == "get_current_stock_price"
+    assert tools[0]["args"] == {"symbol": "TATAMOTORS.NS"}
+    assert tools[0]["duration_s"] == 0.234
+    assert tools[0]["duration_ms"] == 234.0
+    assert not tools[0]["error"]
+
+
+def test_gateway_extract_tokens() -> None:
+    gateway = LLMGateway()
+
+    class FakeResponse:
+        metrics = {"input_tokens": 120, "output_tokens": 45, "total_tokens": 165, "cost": 0.00012}
+
+    tokens = gateway.extract_tokens(FakeResponse())
+    assert tokens["prompt_tokens"] == 120
+    assert tokens["completion_tokens"] == 45
+    assert tokens["total_tokens"] == 165
+    assert tokens["cost"] == 0.00012
+
+
+def test_gateway_get_cache_key() -> None:
+    gateway = LLMGateway()
+    key = gateway.get_cache_key("stock_price", "What is AAPL price?")
+    assert isinstance(key, str)
+    assert len(key) == 64
