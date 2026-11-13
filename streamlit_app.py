@@ -45,7 +45,7 @@ with st.form("research_form", border=True):
         "Ticker symbol",
         value=settings.default_ticker,
         placeholder="BHEL",
-        max_chars=12,
+        max_chars=15,
     )
     st.caption("Examples: BHEL, HMA, RPOWER, JKTYRE")
     price_button, details_button = st.columns(2)

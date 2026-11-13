@@ -34,6 +34,24 @@ def _create_yfinance_session() -> requests.Session:
     return session
 
 
+def _create_ddg_tools(enable_news: bool = False) -> Any:
+    try:
+        return DuckDuckGoTools(enable_news=enable_news)
+    except TypeError:
+        return DuckDuckGoTools()
+
+
+def searchNews(query: str) -> str:
+    """Fallback search function if the LLM generates camelCase searchNews."""
+    try:
+        ddg = _create_ddg_tools(enable_news=False)
+        if hasattr(ddg, "web_search"):
+            return str(ddg.web_search(query))
+        return f"Search result for {query}"
+    except Exception as e:
+        return f"Search result for {query}: {e}"
+
+
 @dataclass(frozen=True)
 class ResearchResult:
     ticker: str
@@ -60,15 +78,20 @@ class ResearchService:
             )
             self._stock_price_agent = Agent(
                 model=model,
+                retries=2,
+                delay_between_retries=1,
                 tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[
                     YFinanceTools(enable_stock_price=True, session=_create_yfinance_session()),
-                    DuckDuckGoTools(),
+                    _create_ddg_tools(enable_news=False),
+                    searchNews,
                 ],
                 instructions=[
                     "You are a precise financial ticker. Look up the current stock price using your tools.",
-                    "First try YFinanceTools. If looking up an Indian stock (like BHEL, RPOWER, JKTYRE, HMA) and no exchange suffix is given, query with '.NS' (NSE) or '.BO' (BSE).",
-                    "If YFinanceTools is blocked, fails, or returns an error, use DuckDuckGoTools to find the latest stock price.",
+                    "If given a company name instead of an exchange ticker (e.g. 'Tata Motors', 'State Bank of India', 'Reliance'), map it to its official exchange ticker symbol (e.g. 'TATAMOTORS.NS', 'SBIN.NS', 'RELIANCE.NS').",
+                    "For Indian stocks without an exchange suffix, query with '.NS' (NSE) or '.BO' (BSE).",
+                    "First call 'get_current_stock_price'. If it fails, is blocked, or returns an error, use 'web_search'.",
+                    "Always use the exact tool function name in snake_case ('get_current_stock_price' or 'web_search'). Never invent tool names or use camelCase.",
                     "Output ONLY the final current stock price, currency, and the last updated date.",
                     "Do not include introductory text, extra analysis, tables, or conversational filler.",
                 ],
@@ -81,13 +104,17 @@ class ResearchService:
             model = Groq(id=self.settings.model_name)
             web_agent = Agent(
                 model=model,
+                retries=2,
+                delay_between_retries=1,
                 tool_call_limit=self.settings.agent_tool_call_limit,
-                tools=[DuckDuckGoTools()],
+                tools=[_create_ddg_tools(enable_news=True)],
                 instructions="always include sources",
                 markdown=True,
             )
             finance_agent = Agent(
                 model=model,
+                retries=2,
+                delay_between_retries=1,
                 tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[YFinanceTools(enable_stock_price=True, session=_create_yfinance_session())],
                 instructions=[
@@ -99,6 +126,8 @@ class ResearchService:
             )
             self._detailed_agent = Agent(
                 model=model,
+                retries=2,
+                delay_between_retries=1,
                 tool_call_limit=self.settings.agent_tool_call_limit,
                 tools=[web_agent, finance_agent],
                 markdown=True,
@@ -155,37 +184,56 @@ class ResearchService:
                 )
                 return ResearchResult(normalized_ticker, mode, cached_response, True, duration_ms, {})
 
-        try:
-            agent = self._get_stock_price_agent() if mode == "stock_price" else self._get_detailed_agent()
-            response = agent.run(query)
-            text = response_text(response)
-            if text is None:
-                text = str(getattr(response, "content", response))
-            if self.settings.cache_enabled:
-                self.cache.set(mode, query, self.settings.model_name, text)
+        max_attempts = 2
+        for attempt in range(max_attempts):
+            try:
+                agent = self._get_stock_price_agent() if mode == "stock_price" else self._get_detailed_agent()
+                response = agent.run(query)
+                text = response_text(response)
+                if text is None:
+                    text = str(getattr(response, "content", response))
+                if self.settings.cache_enabled:
+                    self.cache.set(mode, query, self.settings.model_name, text)
 
-            duration_ms = round((perf_counter() - started_at) * 1000, 2)
-            metrics = extract_response_metrics(response)
-            log_event(
-                self.logger,
-                "research_completed",
-                application="streamlit",
-                ticker=normalized_ticker,
-                mode=mode,
-                duration_ms=duration_ms,
-                response_metrics=metrics,
-            )
-            return ResearchResult(normalized_ticker, mode, text, False, duration_ms, metrics)
-        except Exception as error:
-            self.logger.exception(
-                "research_failed",
-                extra={
-                    "event": "research_failed",
-                    "application": "streamlit",
-                    "ticker": normalized_ticker,
-                    "mode": mode,
-                    "duration_ms": round((perf_counter() - started_at) * 1000, 2),
-                    "error_type": type(error).__name__,
-                },
-            )
-            raise RuntimeError(f"Research failed for {normalized_ticker}: {error}") from error
+                duration_ms = round((perf_counter() - started_at) * 1000, 2)
+                metrics = extract_response_metrics(response)
+                log_event(
+                    self.logger,
+                    "research_completed",
+                    application="streamlit",
+                    ticker=normalized_ticker,
+                    mode=mode,
+                    duration_ms=duration_ms,
+                    response_metrics=metrics,
+                )
+                return ResearchResult(normalized_ticker, mode, text, False, duration_ms, metrics)
+            except Exception as error:
+                if attempt < max_attempts - 1 and any(
+                    sig in str(error).lower()
+                    for sig in ("tool", "validation", "connection", "rate_limit", "timeout")
+                ):
+                    self.logger.warning(
+                        "research_retry",
+                        extra={
+                            "event": "research_retry",
+                            "application": "streamlit",
+                            "ticker": normalized_ticker,
+                            "mode": mode,
+                            "attempt": attempt + 1,
+                            "error": str(error),
+                        },
+                    )
+                    continue
+
+                self.logger.exception(
+                    "research_failed",
+                    extra={
+                        "event": "research_failed",
+                        "application": "streamlit",
+                        "ticker": normalized_ticker,
+                        "mode": mode,
+                        "duration_ms": round((perf_counter() - started_at) * 1000, 2),
+                        "error_type": type(error).__name__,
+                    },
+                )
+                raise RuntimeError(f"Research failed for {normalized_ticker}: {error}") from error
